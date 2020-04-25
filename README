@@ -8,3 +8,5 @@ It contains the following files:
         some unit-test to make sure that encoding for different methods are ok
     - plot_experiments.py
         dirty script to plot the results from differents experiments files
+
+RoboMission files should be added to the folder data/RoboMission
