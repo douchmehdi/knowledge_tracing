@@ -1,0 +1,10 @@
+This repository aims to compare the performance of different Knowledge-Tracing
+methods (AFM-BG, AFG-BGT & PFA) on a RoboMission dataset.
+
+It contains the following files:
+    - run_experiments.py
+        script allowing to fit the KC models and compute metrics
+    - test_run_experiment.py
+        some unit-test to make sure that encoding for different methods are ok
+    - plot_experiments.py
+        dirty script to plot the results from differents experiments files

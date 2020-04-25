@@ -320,7 +320,7 @@ if __name__ == "__main__":
     )
     task_sessions = task_sessions.sort_values(by=["student", "start"])
 
-    # try different q-matrix
+    # choose q-matrix
     qmatrix = change_qmatrix(qmatrix, method=params["change_qmatrix_method"])
     print(f"[INFO] {qmatrix.shape[0]} questions and {qmatrix.shape[1]} items !")
 

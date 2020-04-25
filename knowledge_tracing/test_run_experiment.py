@@ -1,7 +1,7 @@
 import pytest
 import pandas as pd
 import numpy as np
-from knowledge_tracing.run_experiments import encode_afm_bg, encode_afm_bgt, encode_pfa
+from knowledge_tracing.run_experiment import encode_afm_bg, encode_afm_bgt, encode_pfa
 
 
 @pytest.fixture
