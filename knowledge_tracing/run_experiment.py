@@ -4,6 +4,7 @@ from collections import Counter, defaultdict
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MaxAbsScaler, StandardScaler
+import pywFM
 
 from knowledge_tracing import path_algos
 from knowledge_tracing.utils.event_window_counter import EventWindowCounter
@@ -387,6 +388,14 @@ if __name__ == "__main__":
     # we are going to log some informations in the process
     logs = defaultdict(dict)
     logs["params"] = params
+    params_fm = {
+        "task": "classification",
+        "num_iter": 1000,
+        "rlog": True,
+        "learning_method": "mcmc",
+        "k2": 5,
+    }
+    logs["params_fm"] = params_fm
 
     # Let's do some Kfolds and CV along student axis
     n_splits = params["n_splits"]
@@ -468,12 +477,14 @@ if __name__ == "__main__":
             y_train_pfa, y_train_pred_probas_pfa
         )
 
-        # das3h features with lr
+        # das3h features
         X_train_das3h, y_train_das3h = encode_das3h(task_sessions_train, qmatrix)
         X_test_das3h, y_test_das3h = encode_das3h(task_sessions_test, qmatrix)
         X_train_, X_test_ = scale_features(
             X_train_das3h, X_test_das3h, method=params["scale_features_method"]
         )
+
+        # das3h features with lr
         lr = LogisticRegression(max_iter=1000, solver="liblinear")
         lr.fit(X_train_, y_train_das3h, sample_weight=sample_weight)
         # metrics test
@@ -485,6 +496,14 @@ if __name__ == "__main__":
         y_train_pred_probas_das3h_lr = lr.predict_proba(X_train_)[:, 1]
         logs[f"fold{i}"]["das3h_lr_train"] = compute_metrics(
             y_train_das3h, y_train_pred_probas_das3h_lr
+        )
+
+        # das3h
+        fm = pywFM.FM(**params_fm)
+        model = fm.run(X_train_, y_train_das3h, X_test_, y_test_das3h)
+        y_test_pred_probas_das3h = np.array(model.predictions)
+        logs[f"fold{i}"]["das3h"] = compute_metrics(
+            y_test_das3h, y_test_pred_probas_das3h
         )
 
         # item-avg
@@ -527,6 +546,9 @@ if __name__ == "__main__":
     logs["pfa"] = average_metrics([logs[f"fold{i}"]["pfa"] for i in range(n_splits)])
     logs["das3h_lr"] = average_metrics(
         [logs[f"fold{i}"]["das3h_lr"] for i in range(n_splits)]
+    )
+    logs["das3h"] = average_metrics(
+        [logs[f"fold{i}"]["das3h"] for i in range(n_splits)]
     )
     logs["item_avg"] = average_metrics(
         [logs[f"fold{i}"]["item_avg"] for i in range(n_splits)]
