@@ -112,7 +112,6 @@ def encode_afm_bgt(task_sessions, qmatrix):
 
 
 def encode_pfa(task_sessions, qmatrix):
-    """ """
     """ Transforms task_sessions and qmatrix into features X, and labels y
     that allow training an PFA model as a logistic regression.
 
@@ -160,15 +159,37 @@ def encode_pfa(task_sessions, qmatrix):
     return X, y
 
 
-def encode_das3h(task_sessions, qmatrix):
+def encode_das3h(
+    task_sessions,
+    qmatrix,
+    window_lengths=[np.inf, 3600 * 24 * 30, 3600 * 24 * 7, 3600 * 24, 3600],
+):
+    """ Transforms task_sessions and qmatrix into features X, and labels y
+    that allow training an a ML model with DAS3H features.
+
+    Parameters
+    -----------
+    task_sessions: pd.DataFrame with columns [student, start, task, solved]
+        contains info about student & learning-plateform interactions
+    qmatrix: pd.DataFrame
+        links every task to corresponding knowledge components
+
+    Returns
+    -------
+    X: features
+        DataFrame of shape (n_samples, n_features)
+    y: labels
+        DataFrame of shape (n_samples, )
+
+    """
 
     # order by student & start_date to allow easily counting of kc-exposure
     task_sessions_ord = task_sessions.sort_values(by=["student", "start"])
 
     # initialize features
     nb_items, nb_kc = qmatrix.shape
-    nb_w = EventWindowCounter().nb_windows
-    queues = defaultdict(lambda: EventWindowCounter())
+    nb_w = EventWindowCounter(window_lengths=window_lengths).nb_windows
+    queues = defaultdict(lambda: EventWindowCounter(window_lengths=window_lengths))
     item_to_idx = {item: i for i, item in enumerate(qmatrix.index)}
     Id = np.eye(nb_items)
 
@@ -179,7 +200,10 @@ def encode_das3h(task_sessions, qmatrix):
 
         q = qmatrix.loc[row["task"]].values
         idx_kc = np.where(q != 0)[0]
-        start_ts = row["start"].timestamp()
+        try:
+            start_ts = row["start"].timestamp()
+        except AttributeError:
+            start_ts = int(row["start"])
         student = row["student"]
 
         # compute kc counts for all windows
