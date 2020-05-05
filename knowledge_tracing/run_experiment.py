@@ -6,6 +6,7 @@ import pandas as pd
 from sklearn.preprocessing import MaxAbsScaler, StandardScaler
 
 from knowledge_tracing import path_algos
+from knowledge_tracing.utils.event_window_counter import EventWindowCounter
 
 
 DATA_DIR = os.path.join(path_algos, "data/RoboMission")
@@ -150,6 +151,50 @@ def encode_pfa(task_sessions, qmatrix):
             kc_cnt_w += qmatrix.loc[row["task"]].values
         else:
             kc_cnt_f += qmatrix.loc[row["task"]].values
+    X = pd.DataFrame(X, index=task_sessions_ord.index).reindex(task_sessions.index)
+
+    # initialize labels
+    y = task_sessions["solved"]
+
+    return X, y
+
+
+def encode_das3h(task_sessions, qmatrix):
+
+    # order by student & start_date to allow easily counting of kc-exposure
+    task_sessions_ord = task_sessions.sort_values(by=["student", "start"])
+
+    # initialize features
+    nb_items, nb_kc = qmatrix.shape
+    nb_w = EventWindowCounter().nb_windows
+    queues = defaultdict(lambda: EventWindowCounter())
+    item_to_idx = {item: i for i, item in enumerate(qmatrix.index)}
+    Id = np.eye(nb_items)
+
+    X = np.zeros((len(task_sessions_ord), nb_items + 2 * nb_w * nb_kc))
+
+    # create queues that count for different time windows
+    for i, (index, row) in enumerate(task_sessions_ord.iterrows()):
+
+        q = qmatrix.loc[row["task"]].values
+        idx_kc = np.where(q != 0)[0]
+        start_ts = row["start"].timestamp()
+        student = row["student"]
+
+        # compute kc counts for all windows
+        cnt_s, cnt_a = np.zeros((nb_kc, nb_w)), np.zeros((nb_kc, nb_w))
+        for idx in idx_kc:
+            cnt_s[idx, :] = queues[(student, idx, "solved")].get_counters(start_ts)
+            cnt_a[idx, :] = queues[(student, idx, "attempted")].get_counters(start_ts)
+        one_hot_item = Id[item_to_idx[row["task"]], :]
+        X[i, :] = np.r_[one_hot_item, cnt_a.reshape(-1), cnt_s.reshape(-1)]
+
+        # update knowledge components counts for each student
+        for idx in idx_kc:
+            if row["solved"]:
+                queues[(student, idx, "solved")].push(start_ts)
+            queues[(student, idx, "attempted")].push(start_ts)
+
     X = pd.DataFrame(X, index=task_sessions_ord.index).reindex(task_sessions.index)
 
     # initialize labels
@@ -423,6 +468,25 @@ if __name__ == "__main__":
             y_train_pfa, y_train_pred_probas_pfa
         )
 
+        # das3h features with lr
+        X_train_das3h, y_train_das3h = encode_das3h(task_sessions_train, qmatrix)
+        X_test_das3h, y_test_das3h = encode_das3h(task_sessions_test, qmatrix)
+        X_train_, X_test_ = scale_features(
+            X_train_das3h, X_test_das3h, method=params["scale_features_method"]
+        )
+        lr = LogisticRegression(max_iter=1000, solver="liblinear")
+        lr.fit(X_train_, y_train_das3h, sample_weight=sample_weight)
+        # metrics test
+        y_test_pred_probas_das3h_lr = lr.predict_proba(X_test_)[:, 1]
+        logs[f"fold{i}"]["das3h_lr"] = compute_metrics(
+            y_test_das3h, y_test_pred_probas_das3h_lr
+        )
+        # metrics train
+        y_train_pred_probas_das3h_lr = lr.predict_proba(X_train_)[:, 1]
+        logs[f"fold{i}"]["das3h_lr_train"] = compute_metrics(
+            y_train_das3h, y_train_pred_probas_das3h_lr
+        )
+
         # item-avg
         item_avg_train = item_avg_predictor(task_sessions_train)
         # metrics test
@@ -461,6 +525,9 @@ if __name__ == "__main__":
         [logs[f"fold{i}"]["afm_bg"] for i in range(n_splits)]
     )
     logs["pfa"] = average_metrics([logs[f"fold{i}"]["pfa"] for i in range(n_splits)])
+    logs["das3h_lr"] = average_metrics(
+        [logs[f"fold{i}"]["das3h_lr"] for i in range(n_splits)]
+    )
     logs["item_avg"] = average_metrics(
         [logs[f"fold{i}"]["item_avg"] for i in range(n_splits)]
     )
